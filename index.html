@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fur player</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="style.css?v=22">
+</head>
+<body>
+<div id="stage"><canvas id="cv"></canvas></div>
+
+<!-- top left: the logo of the supplementary video (assets/make_assets.py) -->
+<header class="brand">
+  <img class="logo" src="assets/logo.png" alt="logo">
+  <div class="subtitle" data-t="subtitle"></div>
+</header>
+
+<nav class="motions glass" id="motions"></nav>
+
+<div class="views">
+  <div class="seg glass" id="viewseg"></div>
+  <button class="pill glass toggle" id="compare"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><span data-t="compare"></span></button>
+</div>
+<div class="hint glass" id="hint"></div>
+
+<!-- left: the stroking tool (icon, name, key); when active it shows a settings button, which opens its panel below it -->
+<nav class="tools glass" id="tools">
+  <div class="tl-head" data-t="interact"></div>
+  <div id="toollist"></div>
+</nav>
+<div class="panel glass toolpanel" id="toolpanel">
+  <div class="tp-head"><img id="tpicon" alt=""><span id="tptitle"></span>
+    <button class="icon flat" id="tpclose"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="tp-hint" id="tphint"></div>
+  <div id="tpsliders"></div>
+  <div class="tp-strand"><div class="ph" data-t="strandMotion"></div><div class="seg small full" id="tpstrandseg"></div>
+    <div class="strandnote" id="tpstrandnote"></div></div>
+</div>
+
+<!-- pointer feedback of the tool -->
+<div class="cursor brush" id="brush"><div class="ring"></div><div class="dot"></div></div>
+
+<div id="divider"><div class="line"></div><div class="knob glass"><svg viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg></div>
+  <div class="tag glass left" id="tagL"></div><div class="tag glass right" id="tagR"></div></div>
+
+<div class="panel glass gtools" id="gtools">
+  <div class="ph" data-t="secGauss"></div>
+  <div class="row"><label data-t="size"></label><input id="gsize" type="range" min="0.15" max="1" step="0.01"></div>
+  <div class="row"><label data-t="density"></label><input id="gdens" type="range" min="0.01" max="1" step="0.01"><span id="gdens_v" class="v"></span></div>
+  <div class="row"><label data-t="colourBy"></label><select id="gcolour"></select></div>
+  <div class="row"><label data-t="styleBy"></label><select id="gstyle"></select></div>
+  <div class="legend" id="glegend"></div>
+</div>
+
+<div class="panel glass klegend" id="klegend">
+  <div class="kbar"></div>
+  <div class="kends"><span data-t="legendRest"></span><span data-t="legendFull"></span></div>
+  <div class="ktext" data-t="legendKernels"></div>
+</div>
+
+<div class="leftstack">
+  <div class="panel glass card" id="card">
+    <div id="cardtext"></div>
+    <div class="btns"><button class="pill" id="solo"></button><button class="pill" id="unselect" data-t="unselect"></button></div>
+  </div>
+  <div class="panel stats" id="stats">
+    <div class="sthead"><span class="ph" data-t="statsTitle"></span>
+      <button class="stclose" id="stclose"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button></div>
+    <table>
+      <tr><td data-t="stStrands"></td><td id="stS"></td></tr>
+      <tr><td data-t="stGauss"></td><td id="stG"></td></tr>
+      <tr><td data-t="stKernels"></td><td id="stK"></td></tr>
+      <tr class="live first"><td data-t="stDrawn"></td><td id="stD"></td></tr>
+      <tr class="live"><td data-t="stFps"></td><td id="stF"></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- bottom: one player bar -->
+<footer class="bar glass">
+  <button class="play" id="play" title=""><svg viewBox="0 0 24 24" id="playicon"></svg></button>
+  <button class="chip toggle" id="slow"><span class="dot"></span><span data-t="slow"></span></button>
+  <button class="chip toggle on" id="dyn"><span class="dot"></span><span data-t="dynamics"></span></button>
+  <div class="progress" id="progress"><div class="fill" id="pfill"></div><div class="head" id="phead"></div></div>
+  <span class="sep"></span>
+  <button class="chip toggle on" id="statsbtn"><span class="dot"></span><span data-t="statsTitle"></span></button>
+  <button class="chip" id="lang"></button>
+  <button class="icon flat" id="fs" title=""><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  <button class="icon flat" id="advbtn" title=""><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></button>
+</footer>
+
+<aside id="adv" class="glass">
+  <div class="advhead"><span data-t="advanced"></span><button class="icon flat" id="advclose"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="advbody">
+  <section>
+    <h3 data-t="secDyn"></h3>
+    <div class="strandblock"><div class="lbl" data-t="strandMotion"></div><div class="seg small full" id="strandseg"></div>
+      <div class="strandnote" id="strandnote"></div></div>
+    <div id="strandsliders"></div>
+    <div class="row muted strandmsg" id="strandmsg"></div>
+    <div class="row presetrow"><label data-t="preset"></label><div class="seg small" id="presetseg"></div></div>
+    <div id="sliders"></div>
+    <label class="chk"><input type="checkbox" id="collide" checked><span data-t="collide"></span></label>
+    <label class="chk"><input type="checkbox" id="floor" checked><span data-t="floor"></span></label>
+    <label class="chk"><input type="checkbox" id="skin" checked><span data-t="skin"></span></label>
+    <div id="skinsliders"></div>
+    <button class="pill" id="restart" data-t="reset"></button>
+  </section>
+  <section>
+    <h3 data-t="secRender"></h3>
+    <div class="bodyblock"><div class="lbl" data-t="under"></div><div class="seg small full" id="bodyseg"></div>
+      <div class="swatches" id="swatches"></div></div>
+    <label class="chk"><input type="checkbox" id="shon" checked><span data-t="sh"></span></label>
+    <label class="chk"><input type="checkbox" id="repair" checked><span data-t="repair"></span></label>
+    <label class="chk"><input type="checkbox" id="follow" checked><span id="followlbl"></span></label>
+    <div class="row"><label data-t="quality"></label><select id="quality"></select></div>
+    <div class="row muted fpsrow"><label data-t="fps"></label><span id="fpsv">–</span></div>
+  </section>
+  <section>
+    <h3 data-t="about"></h3>
+    <div class="about" id="about"></div>
+  </section>
+  </div>
+</aside>
+
+<div id="loading"><img class="logo big" src="assets/logo.png" alt="logo">
+  <div class="lsub" data-t="subtitle"></div>
+  <div class="lbar"><div id="lfill"></div></div><div id="lmsg"></div></div>
+<script type="module" src="app.js?v=22"></script>
+</body>
+</html>
