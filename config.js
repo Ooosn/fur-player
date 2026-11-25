@@ -1,6 +1,8 @@
 // What the page shows and what it is called. Change names, order and defaults here, not in the code.
 
 export const MOTIONS = [
+  // Free (v23, the author 11-25: the dog keeps moving, choosing freely among the motions): FREE below, renderer.loadFree
+  { id: 'free', free: true, zh: '自由', en: 'Free', key: '0' },
   { id: 'walk', clip: 'mocap_walk', zh: '散步', en: 'Walk', key: '1' },
   { id: 'trot', clip: 'mocap_trot_leap', zh: '小跑', en: 'Trot', key: '2' },
   { id: 'gallop', clip: 'mocap_gallop_turn', zh: '奔跑', en: 'Gallop', key: '3' },
@@ -8,7 +10,16 @@ export const MOTIONS = [
   { id: 'sit', clip: 'mocap_sit_stand', zh: '坐下', en: 'Sit', key: '5' },
   { id: 'shake', clip: 'shake_strong', zh: '抖毛', en: 'Shake', key: '6' },
 ];
-export const DEFAULT_MOTION = 'trot';
+export const DEFAULT_MOTION = 'free';
+// the clips the Free motion chains (weights = how often each is picked; never the same twice in a row), the length of
+// one random sequence (a new one is drawn when it ends) and the cross-fade between clips (frames at 30 fps)
+export const FREE = {
+  seconds: 180, fade: 12,
+  clips: [
+    { clip: 'mocap_trot_leap', w: 3 }, { clip: 'mocap_walk', w: 2 }, { clip: 'mocap_gallop_turn', w: 2 },
+    { clip: 'mocap_high_jump', w: 1 }, { clip: 'mocap_sit_stand', w: 1 }, { clip: 'shake_strong', w: 1.2 },
+  ],
+};
 
 // views: what each half of the screen draws
 export const VIEWS = {
@@ -103,7 +114,7 @@ export const ABOUT = {
     [{ zh: '双击 / [R]', en: 'Double-click / [R]' }, { zh: '复位视角', en: 'Reset view' }],
     [{ zh: '单击高斯', en: 'Click a Gaussian' }, { zh: '查看它属于哪根毛', en: 'Show its strand' }],
     [{ zh: '[空格]', en: '[Space]' }, { zh: '播放 / 暂停', en: 'Play / pause' }],
-    [{ zh: '[1] – [6]', en: '[1] – [6]' }, { zh: '动作', en: 'Motions' }],
+    [{ zh: '[0] – [6]', en: '[0] – [6]' }, { zh: '动作（0 = 自由）', en: 'Motions (0 = Free)' }],
     [{ zh: '[S]', en: '[S]' }, { zh: '慢放', en: 'Slow motion' }],
     [{ zh: '[D]', en: '[D]' }, { zh: '毛发动力学', en: 'Fur dynamics' }],
     [{ zh: '[C]', en: '[C]' }, { zh: '对比', en: 'Compare' }],

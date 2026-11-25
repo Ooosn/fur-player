@@ -1,9 +1,9 @@
 // Page logic: loading, interface, camera, interaction tools, frame loop. GPU work is in renderer.js, names and defaults
 // in config.js.
-import { FurRenderer } from './renderer.js?v=22';
-import { Orbit, sub, norm, add, scl } from './camera.js?v=22';
-import * as C from './config.js?v=22';
-import { SKIN_DEFAULT } from './skin.js?v=22';
+import { FurRenderer } from './renderer.js?v=23';
+import { Orbit, sub, norm, add, scl } from './camera.js?v=23';
+import * as C from './config.js?v=23';
+import { SKIN_DEFAULT } from './skin.js?v=23';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -375,9 +375,11 @@ function updateCard() {
 
 // ------------------------------------------------------------------------------------------------ actions
 let man, rnd, orbit, dirty = true, acc = 0, pickReq = null, drag = null;
+// a motion: a clip, or Free (a new random chain of the clips; fresh = false keeps the current one)
+function loadMotion(m, fresh = true) { if (m.free) rnd.loadFree(C.FREE, fresh); else rnd.loadClip(m.clip); }
 function selectMotion(id) {
   st.motion = id; const m = C.MOTIONS.find((x) => x.id === id);
-  rnd.loadClip(m.clip); acc = 0; st.playing = true; buildMotions(); updatePanels(); dirty = true;
+  loadMotion(m); acc = 0; st.playing = true; buildMotions(); updatePanels(); dirty = true;
 }
 function selectView(id) {
   if (id === 'fur') { st.compare = false; st.view = 'fur'; } else st.view = id;
@@ -391,7 +393,7 @@ function toggleCompare() {
 function applySkin() {                // reload the clip with the new loose skin and continue at the same frame
   const fr = rnd.frame;
   rnd.skin = { ...st.skin };
-  rnd.loadClip(C.MOTIONS.find((x) => x.id === st.motion).clip);
+  loadMotion(C.MOTIONS.find((x) => x.id === st.motion), false);
   if (fr > 0) rnd.seek(fr);
   buildSkinSliders(); dirty = true;
 }
@@ -439,7 +441,7 @@ async function main() {
   wire();
   applyLang();
   const m = C.MOTIONS.find((x) => x.id === (qs.get('motion') || st.motion)) || C.MOTIONS[0];
-  st.motion = m.id; rnd.loadClip(m.clip); buildMotions();
+  st.motion = m.id; loadMotion(m); buildMotions();
   sizeCanvas(); resetCamera();
   $('loading').style.display = 'none';
   requestAnimationFrame(loop);
@@ -629,7 +631,10 @@ function loop(now) {
     acc += dt * (st.slow ? 0.25 : 1) * 30;
     const n = Math.floor(acc); acc -= n;
     target = rnd.frame + Math.min(n, 4);
-    if (target >= rnd.total) { rnd.reset(); target = 0; }
+    if (target >= rnd.total) {                    // end of the clip: again from the start; Free draws a new chain
+      if (C.MOTIONS.find((x) => x.id === st.motion)?.free) loadMotion(C.MOTIONS[0]); else rnd.reset();
+      target = 0;
+    }
   }
   const camFn = (f) => orbit.pose(st.follow ? rnd.followOffset(f) : [0, 0, 0]);
   const fur = { ...C.VIEWS.fur, body: st.body === 'fur' ? 1 : st.body === 'plain' ? 3 : 0, size: 1, lod: lvl.dens };

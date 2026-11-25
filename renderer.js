@@ -1,8 +1,9 @@
 // Everything on the GPU: buffers, pipelines, the guide dynamics, and one frame of drawing (one or two screen
 // regions, each with its own view: fur render, Gaussians or kernels). No DOM here.
-import * as S from './shaders.js?v=22';
-import { rebuild } from './dyn.js?v=22';
-import { looseSkin, SKIN_DEFAULT } from './skin.js?v=22';
+import * as S from './shaders.js?v=23';
+import { rebuild } from './dyn.js?v=23';
+import { looseSkin, SKIN_DEFAULT } from './skin.js?v=23';
+import { buildFree } from './free.js?v=23';
 
 export const HOLD = 45;                  // rest frames after a clip, the fur settles (motion_run.py --extra-rest-frames 45)
 const DSTRIDE = 256;                     // dynamic uniform stride
@@ -215,11 +216,11 @@ export class FurRenderer {
   }
   writeDynUniforms() {
     const c = this.clip, d = this.dyn, p = d.p, K = this.K, man = this.man;
-    const n = c.F * c.S + 1;
+    const n = c.F * c.S + 2;                // + init at frame 0 (reset) + init at a given frame (kernels restarted)
     const ab = new ArrayBuffer(n * DSTRIDE);
     const u = new Uint32Array(ab), f = new Float32Array(ab);
     for (let e = 0; e < n; e++) {
-      const b = e * DSTRIDE / 4, init = e === n - 1;
+      const b = e * DSTRIDE / 4, init = e >= c.F * c.S;
       u[b] = K; u[b + 1] = 39; u[b + 2] = init ? 1 : 0; u[b + 3] = init ? c.S - 1 : e;
       f[b + 4] = 1 / d.h; f[b + 5] = 1 / 9.81; f[b + 6] = p.inertia_gain; f[b + 7] = p.inertia_limit_g;
       f[b + 8] = p.gravity_gain; f[b + 9] = man.guides.gravity[0]; f[b + 10] = man.guides.gravity[1]; f[b + 11] = man.guides.gravity[2];
@@ -232,8 +233,23 @@ export class FurRenderer {
   // ------------------------------------------------------------------------------------------- clips
   loadClip(name) {
     const info = this.man.clips.find((c) => c.name === name);
-    const rec = new Float32Array(this.files[`motion_${name}`]);
-    const F = info.frames, Sx = info.substeps, J = 39;
+    return this.installClip(name, info.frames, info.substeps, new Float32Array(this.files[`motion_${name}`]), HOLD);
+  }
+  // Free motion (free.js): the clips chained in random order into one long clip, no rest frames after it.
+  // spec: { seconds, fade, clips: [{ clip, w }] }; fresh = false reuses the last sequence (e.g. after a skin change)
+  loadFree(spec, fresh = true) {
+    if (fresh || !this.freeSeq) {
+      const clips = spec.clips.map((c) => {
+        const info = this.man.clips.find((x) => x.name === c.clip);
+        return { name: c.clip, rec: new Float32Array(this.files[`motion_${c.clip}`]), F: info.frames, S: info.substeps, w: c.w };
+      });
+      this.freeSeq = buildFree(clips, this.rig, this.man.guides.fps, spec.seconds, spec.fade);
+    }
+    const s = this.freeSeq;
+    return this.installClip('free', s.F, s.S, s.rec, 0);
+  }
+  installClip(name, F, Sx, rec, hold) {
+    const info = { name, frames: F, substeps: Sx }, J = 39;
     const jm = new Float32Array(F * Sx * J * 12);
     for (let i = 0; i < F * Sx * J; i++) {
       const b = i * 8, x = rec[b], y = rec[b + 1], z = rec[b + 2], w = rec[b + 3], o = i * 12;
@@ -274,8 +290,8 @@ export class FurRenderer {
     const skinStats = sk.on && sk.amount > 0 ? looseSkin(jm, F, Sx, rig, this.man.guides.fps, sk) : null;
     if (this.clip) { this.clip.bJoints.destroy(); this.clip.bDyn.destroy(); }
     const bJoints = this.mk(jm);
-    const bDyn = this.empty((F * Sx + 1) * DSTRIDE, this.BU.UNIFORM);
-    const c = this.clip = { name, info, F, S: Sx, bJoints, bDyn, cen: smooth(cen, 3, 5), head: smooth(head, 2, 5), skinStats };
+    const bDyn = this.empty((F * Sx + 2) * DSTRIDE, this.BU.UNIFORM);
+    const c = this.clip = { name, info, F, S: Sx, hold, bJoints, bDyn, cen: smooth(cen, 3, 5), head: smooth(head, 2, 5), skinStats };
     const trackXY = smooth(core, 3, 12), trackZ = smooth(core, 3, 24);       // 0.4 s horizontally, 0.8 s vertically
     c.track = new Float32Array(F * 3);
     for (let fr = 0; fr < F; fr++) { c.track[3 * fr] = trackXY[3 * fr]; c.track[3 * fr + 1] = trackXY[3 * fr + 1]; c.track[3 * fr + 2] = trackZ[3 * fr + 2]; }
@@ -302,9 +318,10 @@ export class FurRenderer {
     this.makeStrandDynBG();
     if (this.dyn) this.writeDynUniforms();
     this.reset();
-    return { frames: F + HOLD };
+    this.kernelsLive = true;
+    return { frames: F + hold };
   }
-  get total() { return this.clip ? this.clip.F + HOLD : 1; }
+  get total() { return this.clip ? this.clip.F + this.clip.hold : 1; }
   reset() { this.frame = 0; this.simFrame = 0; this.pendingReset = true; this.goal = null; }
   seek(f) { this.goal = Math.max(0, Math.min(this.total - 1, f)); if (this.goal < this.simFrame) this.pendingReset = true; }
   // camera follow offset and shadow of a frame
@@ -337,6 +354,15 @@ export class FurRenderer {
     const ps = enc.beginComputePass();
     ps.setPipeline(this.pRest); ps.setBindGroup(0, c.bgProj, [0]); ps.dispatchWorkgroups(Math.ceil(K / 64));
     ps.setPipeline(this.pDrive); ps.setBindGroup(0, c.bgDrive, [(c.F * c.S) * DSTRIDE]); ps.dispatchWorkgroups(Math.ceil(K / 64));
+    ps.end();
+  }
+  encodeKernelRestart(enc, f) {
+    const c = this.clip, K = this.K, fs = Math.min(f, c.F - 1), e = c.F * c.S + 1;
+    this.device.queue.writeBuffer(c.bDyn, e * DSTRIDE + 12, new Uint32Array([fs * c.S + c.S - 1]));
+    enc.clearBuffer(this.bGst, 0, S.GSTATE.tip * K * 4);
+    const ps = enc.beginComputePass();
+    ps.setPipeline(this.pRest); ps.setBindGroup(0, c.bgProj, [0]); ps.dispatchWorkgroups(Math.ceil(K / 64));
+    ps.setPipeline(this.pDrive); ps.setBindGroup(0, c.bgDrive, [e * DSTRIDE]); ps.dispatchWorkgroups(Math.ceil(K / 64));
     ps.end();
   }
   encodeStep(enc, f) {
@@ -372,11 +398,17 @@ export class FurRenderer {
     this.device.queue.writeBuffer(this.bTouch, 0, this.touchBuf);
   }
   // advance the simulation toward `target` (at most `budget` frames now); returns the frame shown
-  advance(enc, target, dynOn, budget = 40) {
+  advance(enc, target, dynOn, budget = 40, kernels = true) {
     if (this.goal !== null) target = this.goal;
-    if (this.pendingReset) { this.encodeReset(enc); this.simFrame = 0; this.pendingReset = false; }
-    if (dynOn) { while (this.simFrame < target && budget-- > 0) { this.simFrame++; this.encodeStep(enc, this.simFrame); } }
-    else this.simFrame = target;
+    if (this.pendingReset) { this.encodeReset(enc); this.simFrame = 0; this.pendingReset = false; this.kernelsLive = true; }
+    if (dynOn && kernels) {
+      if (!this.kernelsLive) { this.encodeKernelRestart(enc, this.simFrame); this.kernelsLive = true; }
+      while (this.simFrame < target && budget-- > 0) { this.simFrame++; this.encodeStep(enc, this.simFrame); }
+    } else {
+      // no kernel dynamics (fur dynamics off, or Strands only): the frame moves on; kernels restart when needed again
+      if (dynOn) this.simFrame = Math.min(target, this.simFrame + budget); else this.simFrame = target;
+      if (dynOn) this.kernelsLive = false;
+    }
     this.frame = this.simFrame;
     if (this.goal !== null && this.simFrame >= this.goal) this.goal = null;
     return this.frame;
@@ -387,16 +419,18 @@ export class FurRenderer {
     const device = this.device, c = this.clip, W = this.W, H = this.H, K = this.K, R = this.R, N = this.N;
     const enc = device.createCommandEncoder();
     const before = this.pendingReset ? 0 : this.simFrame;
-    this.advance(enc, o.target, o.dynOn);
+    // Strands only does not use the kernels: they are not simulated unless the Kernels view shows them
+    const kernels = !(this.smode === 2 && this.sdReady && this.bgSDyn) || o.sides.some((s) => s.kernels);
+    this.advance(enc, o.target, o.dynOn, 40, kernels);
     let held = 0;
-    if (o.dynOn && o.hold > 0 && !this.pendingReset) for (let i = 0; i < o.hold; i++) { this.encodeHold(enc, this.frame); held++; }
+    if (o.dynOn && o.hold > 0 && !this.pendingReset) for (let i = 0; i < o.hold; i++) { if (kernels) this.encodeHold(enc, this.frame); held++; }
     const nsteps = Math.max(0, this.simFrame - before) + held;             // dynamics frames run in this draw
     if (o.camFn) o.cam = o.camFn(this.frame);       // the camera of the frame actually drawn (it was one frame behind)
     this.lastCam = o.cam; this.lastDrawnFrame = this.frame;
     const slot = Math.min(this.frame, c.F - 1) * c.S + c.S - 1;
     device.queue.writeBuffer(this.bRV, 0, new Uint32Array([K, slot, 0, 0]));
     device.queue.writeBuffer(this.bRV, 8, new Float32Array([this.satDeg * Math.PI / 180]));
-    if (o.dynOn) {
+    if (o.dynOn && kernels) {
       const ps = enc.beginComputePass();
       ps.setPipeline(this.pRot); ps.setBindGroup(0, c.bgRot); ps.dispatchWorkgroups(Math.ceil(K / 64));
       ps.end();
@@ -573,7 +607,7 @@ export class FurRenderer {
     const p = this.dyn ? this.dyn.p : {}, v = this.sparams.variation, g = this.man.guides.gravity, G = this.sgrid;
     const deg = Math.PI / 180;
     u[0] = this.R; u[1] = this.K; u[2] = slot; u[3] = this.smode;
-    f[4] = dt; f[5] = 1 / dt; f[6] = 0.15 * v; f[7] = 0.08 * v;             // gain jitter, longest lag (s)
+    f[4] = dt; f[5] = 1 / dt; f[6] = 0.15 * v; f[7] = 0.04 * v;             // gain jitter, longest lag (s)
     f[8] = p.f_ref ?? 3; f[9] = p.h_ref ?? 0.05; f[10] = p.len_exp ?? 1.5; f[11] = p.f_min ?? 1.5;
     f[12] = p.f_max ?? 30; f[13] = p.zeta ?? 0.35; f[14] = p.drag ?? 0; f[15] = 0.2 * v;   // frequency/damping jitter
     f[16] = p.inertia_gain ?? 1; f[17] = p.inertia_limit_g ?? 2; f[18] = p.gravity_gain ?? 1; f[19] = this.sparams.coh;
